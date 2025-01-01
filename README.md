@@ -19,3 +19,9 @@ Throughout my PhD, I've been motivated to cultivate a personal knowledge managem
 > these need to be clarified: what are 'collect', 'structure', 'builds off' specifically?
 
 All of this is motivated by fear that I'll write the same thing in my notes twice, miss an important connection, or waste my time doing what I could have automated. I think creating a rhizomatic machine that takes a given piece of context, searches through an embedding space, and returns related ideas can help alleviate these fears.
+
+![rhizomatic structure of notes](rhizomatic-diagram.png)
+
+- from a disconnected set of notes, divide into chunks with context enrichment
+- construct atomic, self-contained "nomads" of related chunks across notes
+- construct "assemblages" of nomads to form new connections
