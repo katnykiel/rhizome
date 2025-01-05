@@ -1,27 +1,32 @@
 # rhizome
 
-## Installation
-
-work in progress... email me if you are curious about getting this setup
-
-requirements:
-
-- r2r full installation (I use the docker setup with full local llms)
-
-## Motivation
-
-Throughout my PhD, I've been motivated to cultivate a personal knowledge management system that:
-
-  - passively collects and structures information
-  - actively creates new connections
-  - builds off the foundation of existing thoughts
-
-> these need to be clarified: what are 'collect', 'structure', 'builds off' specifically?
-
-All of this is motivated by fear that I'll write the same thing in my notes twice, miss an important connection, or waste my time doing what I could have automated. I think creating a rhizomatic machine that takes a given piece of context, searches through an embedding space, and returns related ideas can help alleviate these fears.
+A rhizomatic Zettelkasten system using advanced retrival-augmented generation techniques
 
 ![rhizomatic structure of notes](rhizomatic-diagram.png)
 
-- from a disconnected set of notes, divide into chunks with context enrichment
-- construct atomic, self-contained "nomads" of related chunks across notes
-- construct "assemblages" of nomads to form new connections
+- from a disconnected set of notes, divide each note into chunks 
+- embed each chunk and add context enrichment
+- construct atomic, self-contained *nomads* of related ideas across chunks
+- construct *assemblages* of nomads to form new connections
+
+## Requirements
+
+- a folder of notes 
+- install rhizome python CLI
+- a running [R2R server](https://r2r-docs.sciphi.ai/introduction)
+
+## Motivation
+
+All of this is motivated by the fear that I'll write the same thing in my notes twice, miss an important connection, or impose an artificially skewed structure on my notes. Therefore, I decided to cultivate a personal knowledge management system that does the following:
+
+> passively atomizes heterogenous, unstructured notes
+
+Why spend my time doing what I could have automated? Instead of manually defined backlinks in a PKM system, assign them using embedding similarity
+
+> actively synthesizes new connections
+
+Again, instead of relying on manual, human-assigned connections, let embedding models make them in the background.
+
+> enables writing with a contextual foundation
+
+Creating a rhizomatic machine that takes a given piece of context, searches through an embedding space, and returns related ideas alleviates the fear of writing the same idea again.
