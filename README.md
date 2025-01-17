@@ -1,6 +1,6 @@
 # rhizome
 
-A rhizomatic Zettelkasten system using advanced retrival-augmented generation techniques
+A rhizomatic Zettelkasten system to build off existing knowledge and synthesize new connections
 
 ![rhizomatic structure of notes](rhizomatic-diagram.png)
 
