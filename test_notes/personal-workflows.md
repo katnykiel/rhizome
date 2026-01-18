@@ -1,0 +1,9 @@
+# Personal Workflows
+
+The first principle of any effective personal workflow is to capture everything that comes into your mind. Don't trust your memory for tasks, ideas, or information you need to act on later. Use whatever tool is most friction-free in the moment - a notebook, phone app, or voice recorder. The key is to get it out of your head immediately so your mind is free to think rather than remember. Regular review of these captures ensures nothing falls through the cracks.
+
+Captured information is useless if it sits in an inbox forever. Set aside regular time to process your captures - daily for urgent items, weekly for everything else. During processing, decide what each item is and what action it requires. Some items become tasks, others become reference material, and many can simply be discarded. The goal is to transform raw captures into organized, actionable information.
+
+When taking notes, aim for atomicity - one idea per note. This seems counterintuitive when you're capturing connected thoughts, but atomic notes are easier to connect, reuse, and recombine later. A long note mixing multiple concepts becomes hard to link effectively. Atomic notes can be assembled into larger documents when needed, but they maintain their identity as individual units of thought. This granularity enables more flexible knowledge structures.
+
+Manual organization doesn't scale. As your personal information grows, automated systems become essential. This includes everything from smart inbox filters to AI-powered tagging and similarity detection. The goal isn't to eliminate human judgment but to offload the mechanical work so you can focus on thinking and creating. Automation should work in the background, surfacing relevant information when you need it and suggesting connections you might have missed.

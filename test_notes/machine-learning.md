@@ -1,0 +1,9 @@
+# Machine Learning Concepts
+
+Vector embeddings are numerical representations of text, images, or other data types in a high-dimensional space. The key property is that semantically similar items are positioned close to each other in this space. This allows us to measure similarity using distance metrics like cosine similarity or Euclidean distance. Modern language models create embeddings that capture subtle semantic relationships, enabling powerful search and recommendation systems.
+
+Clustering algorithms group similar data points together without requiring labeled training data. This unsupervised learning approach is valuable when we want to discover natural groupings in our data. Common algorithms include K-means, which partitions data into K clusters, and DBSCAN, which can find clusters of arbitrary shape and identify outliers. The challenge is choosing the right number of clusters and the appropriate similarity metric for your domain.
+
+Running language models locally provides privacy and control over your data. Tools like Ollama make it easy to run powerful open-source models on your own hardware. While local models may not match the capabilities of large cloud-based models, they offer several advantages: no API costs, complete data privacy, offline functionality, and full control over the model's behavior. For many applications, especially personal tools, local models provide sufficient capability while maintaining autonomy.
+
+Semantic search goes beyond keyword matching to understand the meaning and context of queries. By converting both documents and queries into embeddings, we can find relevant information even when the exact words don't match. This is particularly powerful for personal knowledge management, where we might remember the concept we're looking for but not the specific terms we used. Semantic search enables more natural, intuitive exploration of information spaces.
