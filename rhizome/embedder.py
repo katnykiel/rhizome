@@ -56,33 +56,34 @@ class ChunkEmbedder:
     
     def create_embeddings(self):
         """Create embeddings for all loaded chunks."""
-        print(f"Creating embeddings for {len(self.chunks)} chunks...")
-        
         texts = [chunk['content'] for chunk in self.chunks]
         self.chunk_embeddings = self.embeddings.embed_documents(texts)
-        
-        print("Embeddings created.")
     
     def find_similar_chunks(self, threshold: float = 0.7) -> List[List[int]]:
-        """Find groups of similar chunks using cosine similarity.
+        """Find groups of semantically similar chunks using cosine similarity.
         
-        Uses connected components to group chunks where each chunk
+        Uses connected components algorithm to group chunks where each chunk
         in a group is similar to at least one other chunk in the group.
+        Only returns groups with 2 or more chunks.
         
         Args:
-            threshold: Similarity threshold (0-1)
+            threshold: Similarity threshold (0-1) for considering chunks as similar
             
         Returns:
-            List of lists, where each inner list contains indices of similar chunks
+            List of lists, where each inner list contains indices of similar chunks (min 2 per group)
         """
         if not self.chunk_embeddings:
             raise ValueError("No embeddings found. Call create_embeddings() first.")
         
-        # Calculate similarity matrix
+        # Calculate similarity matrix using cosine similarity
         embeddings_array = np.array(self.chunk_embeddings)
         similarity_matrix = cosine_similarity(embeddings_array)
         
+        # Set diagonal to 0 to avoid self-loops
+        np.fill_diagonal(similarity_matrix, 0)
+        
         # Build adjacency list for connected components
+        # Two chunks are connected if their similarity exceeds the threshold
         n = len(self.chunks)
         adj = [[] for _ in range(n)]
         
@@ -103,11 +104,12 @@ class ChunkEmbedder:
                 if not visited[neighbor]:
                     dfs(neighbor, component)
         
+        # Process all nodes and collect groups with 2+ chunks
         for i in range(n):
-            if not visited[i] and adj[i]:  # Only process nodes with connections
+            if not visited[i] and adj[i]:  # Only process unvisited nodes with connections
                 component = []
                 dfs(i, component)
-                if len(component) > 1:  # Only create groups with 2+ chunks
+                if len(component) >= 2:  # Only keep groups with 2 or more chunks
                     groups.append(component)
         
         return groups
@@ -131,8 +133,8 @@ class ChunkEmbedder:
         plateau_title = f"Plateau {plateau_id}"
         filename_base = f"plateau-{plateau_id:03d}"
         
-        # Create backlinks list
-        related_chunks_backlinks = [f"[[{chunk['metadata'].get('title', 'Unknown')}]]" for chunk in related_chunks]
+        # Create backlinks list using file names instead of titles
+        related_chunks_backlinks = [Path(chunk['file']).stem for chunk in related_chunks]
         
         # Generate combined summary using LLM if available
         combined_summary = ""
@@ -153,15 +155,23 @@ Provide a concise combined summary:"""
                 combined_summary = llm.invoke(summary_prompt).strip()
                 
                 # Generate title from summary
-                title_prompt = f"""Based on this synthesis, generate a concise 2-4 word title:
+                title_prompt = f"""Generate a 2-4 word title that captures the main theme. Output ONLY the title, nothing else.
 
+Synthesis:
 {combined_summary[:200]}
 
 Title:"""
                 plateau_title = llm.invoke(title_prompt).strip()
-                # Clean title
-                plateau_title = re.sub(r'[*_`#"\']', '', plateau_title)
-                plateau_title = plateau_title.split('\n')[0][:50]
+                # Clean title - remove markdown, punctuation, and extra phrases
+                plateau_title = plateau_title.split('\n')[0]  # Take only first line
+                plateau_title = re.sub(r'[*_`#"\',:;!?.]', '', plateau_title)  # Remove punctuation
+                plateau_title = plateau_title.strip()
+                # Remove common extra phrases
+                plateau_title = re.sub(r'^(okay|here|well|the|a|an)\s+', '', plateau_title, flags=re.IGNORECASE)
+                plateau_title = plateau_title[:50].strip()
+                # Ensure title is not empty
+                if not plateau_title:
+                    plateau_title = f"plateau-{plateau_id:03d}"
                 
                 # Update filename
                 safe_title = re.sub(r'[^\w\s-]', '', plateau_title.lower())
@@ -197,25 +207,19 @@ Provide your analysis:"""
             
             # Backlinks section
             f.write("**Related chunks:** ")
-            f.write(", ".join(related_chunks_backlinks))
+            f.write(", ".join([f"[[{name}]]" for name in related_chunks_backlinks]))
             f.write("\n\n")
             
             # Combined summary
             f.write("## Synthesis\n\n")
             if combined_summary:
                 f.write(combined_summary)
-            else:
-                f.write("This plateau connects the following related ideas:\n\n")
-                for i, chunk in enumerate(related_chunks, 1):
-                    f.write(f"- {chunk['metadata'].get('title', 'Untitled')}: {chunk['content'][:150]}...\n")
             f.write("\n\n")
             
             # Agreements and differences
-            f.write("## Agreements & Differences\n\n")
+            f.write("## Differences\n\n")
             if agreements_differences:
                 f.write(agreements_differences)
-            else:
-                f.write("(Analysis not available)")
             f.write("\n")
         
         return str(filepath)
@@ -245,8 +249,6 @@ Provide your analysis:"""
         # Find similar chunks
         groups = self.find_similar_chunks(threshold)
         
-        print(f"Found {len(groups)} plateau groups")
-        
         # Create plateau files
         output_dir.mkdir(parents=True, exist_ok=True)
         plateau_files = []
@@ -254,6 +256,5 @@ Provide your analysis:"""
         for i, group in enumerate(groups):
             plateau_file = self.create_plateau(group, i, output_dir, llm=llm)
             plateau_files.append(plateau_file)
-            print(f"Created plateau: {Path(plateau_file).name}")
         
         return plateau_files

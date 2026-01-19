@@ -18,12 +18,13 @@ class NoteChunker:
         """
         self.llm = llm
     
-    def chunk_note(self, content: str, source_file: str) -> List[Dict[str, str]]:
+    def chunk_note(self, content: str, source_file: str, start_chunk_id: int = 0) -> List[Dict[str, str]]:
         """Break a note into atomic chunks.
         
         Args:
             content: The markdown content to chunk
             source_file: The original filename for reference
+            start_chunk_id: The starting chunk ID for cumulative indexing
             
         Returns:
             List of dicts with 'content' and 'metadata' keys
@@ -34,7 +35,7 @@ class NoteChunker:
         # Split by one or more blank lines
         paragraphs = re.split(r'\n\n+', content.strip())
         
-        chunk_id = 0
+        chunk_id = start_chunk_id
         for paragraph in paragraphs:
             paragraph = paragraph.strip()
             if not paragraph:
@@ -53,14 +54,25 @@ class NoteChunker:
             
             # Generate concise title using LLM
             try:
-                prompt = f"Generate a concise 1-3 word title for this text:\n\n{paragraph[:200]}\n\nTitle:"
+                prompt = f"""Generate a 1-3 word title for this text. Output ONLY the title, nothing else.
+
+Text:
+{paragraph[:200]}
+
+Title:"""
                 title = self.llm.invoke(prompt).strip()
-                # Clean up the title - remove markdown, quotes, and formatting
+                # Clean up the title - remove markdown, quotes, colons, and extra text
                 title = title.split('\n')[0]  # Take only first line
-                title = re.sub(r'[*_`#"\']', '', title)  # Remove markdown and quotes
+                title = re.sub(r'[*_`#"\',:;!?]', '', title)  # Remove markdown, quotes, and punctuation
                 title = title.strip()
+                # Remove common extra phrases the LLM might add
+                title = re.sub(r'^(okay|here|well|the|a|an)\s+', '', title, flags=re.IGNORECASE)
                 if len(title) > 30:
                     title = ' '.join(title.split()[:3])
+                # Ensure title is not empty
+                if not title:
+                    words = paragraph.split()[:2]
+                    title = ' '.join(words)
             except Exception as e:
                 # Fallback to first two words
                 words = paragraph.split()[:2]
@@ -86,10 +98,8 @@ class NoteChunker:
         Returns:
             Path to the saved file
         """
-        # Create a filename from the title
-        filename = re.sub(r'[^\w\s-]', '', chunk['title'].lower())
-        filename = re.sub(r'[-\s]+', '-', filename)
-        filename = f"{filename}-{chunk['chunk_id']}.md"
+        # Create a filename using the chunk_id to ensure uniqueness
+        filename = f"chunk-{chunk['chunk_id']:05d}.md"
         
         filepath = output_dir / filename
         
@@ -98,7 +108,8 @@ class NoteChunker:
             f.write('---\n')
             f.write(f"type: chunk\n")
             f.write(f"chunk_id: {chunk['chunk_id']}\n")
-            f.write(f"title: {chunk['title']}\n")
+            # Quote title to handle special characters in YAML
+            f.write(f'title: "{chunk["title"]}"\n')
             f.write('---\n\n')
             f.write(f"# {chunk['title']}\n\n")
             f.write(f"Source: [[{chunk['source']}]]\n\n")
@@ -118,18 +129,17 @@ class NoteChunker:
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         chunk_files = []
+        cumulative_chunk_id = 0
         
-        for md_file in input_dir.glob('*.md'):
-            print(f"Processing {md_file.name}...")
-            
+        for md_file in sorted(input_dir.glob('*.md')):
             with open(md_file, 'r') as f:
                 content = f.read()
             
-            chunks = self.chunk_note(content, md_file.name)
+            chunks = self.chunk_note(content, md_file.name, start_chunk_id=cumulative_chunk_id)
             
             for chunk in chunks:
                 chunk_file = self.save_chunk(chunk, output_dir)
                 chunk_files.append(chunk_file)
-                print(f"  Created chunk: {Path(chunk_file).name}")
+                cumulative_chunk_id = chunk['chunk_id'] + 1
         
         return chunk_files

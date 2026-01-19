@@ -1,85 +1,133 @@
 """Command-line interface for rhizome."""
 
+import sys
 import argparse
 from pathlib import Path
-from langchain_community.llms import Ollama
-from langchain_community.embeddings import OllamaEmbeddings
+
+try:
+    from langchain_ollama import OllamaLLM, OllamaEmbeddings
+except ImportError:
+    print("Error: langchain-ollama not installed")
+    print("Run: pip install -U langchain-ollama")
+    sys.exit(1)
+
+try:
+    from rich.console import Console
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+except ImportError:
+    print("Error: rich not installed")
+    print("Run: pip install rich")
+    sys.exit(1)
+
 from rhizome.chunker import NoteChunker
 from rhizome.embedder import ChunkEmbedder
+
+console = Console()
 
 
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description="Rhizome: Atomize and connect your notes"
+        description="Rhizome: Atomize and connect your notes",
+        prog="rhizome"
     )
     parser.add_argument(
-        'input_dir',
+        '-i', '--input',
         type=Path,
+        required=True,
         help='Directory containing markdown notes'
     )
     parser.add_argument(
-        '--output-dir',
+        '-o', '--output',
         type=Path,
-        default=Path('output'),
-        help='Directory for output files (default: output)'
+        default=None,
+        help='Output directory for chunks and plateaus (default: input directory)'
     )
     parser.add_argument(
         '--threshold',
         type=float,
-        default=0.7,
-        help='Similarity threshold for creating plateaus (default: 0.7)'
+        default=0.65,
+        help='Similarity threshold for creating plateaus (default: 0.65)'
     )
     parser.add_argument(
-        '--model',
+        '--llm-model',
         type=str,
-        default='llama3.1',
-        help='Ollama model to use (default: llama3.1)'
+        default='deepseek-r1:8b',
+        help='Ollama model to use for text generation (default: deepseek-r1:8b)'
+    )
+    parser.add_argument(
+        '--embedding-model',
+        type=str,
+        default='embeddinggemma',
+        help='Ollama model to use for embeddings (default: embeddinggemma)'
     )
     
     args = parser.parse_args()
     
+    # Resolve input directory
+    input_dir = args.input.resolve()
+    
     # Validate input
-    if not args.input_dir.exists():
-        print(f"Error: Input directory '{args.input_dir}' does not exist")
+    if not input_dir.exists():
+        console.print(f"[red]Error: Input directory '{input_dir}' does not exist[/red]")
         return 1
     
-    # Setup directories
-    chunks_dir = args.output_dir / 'chunks'
-    plateaus_dir = args.output_dir / 'plateaus'
+    if not input_dir.is_dir():
+        console.print(f"[red]Error: '{input_dir}' is not a directory[/red]")
+        return 1
     
-    print(f"🌱 Rhizome: Processing notes from {args.input_dir}")
-    print(f"   Using model: {args.model}")
-    print(f"   Output directory: {args.output_dir}")
-    print()
+    # Determine output directory
+    if args.output:
+        output_dir = args.output.resolve()
+    else:
+        output_dir = input_dir
+    
+    # Setup chunk and plateau directories
+    chunks_dir = output_dir / 'chunks'
+    plateaus_dir = output_dir / 'plateaus'
+    
+    console.print("[bold]Rhizome[/bold]", justify="center")
+    console.print()
     
     # Initialize LLM and embeddings
-    try:
-        llm = Ollama(model=args.model)
-        embeddings = OllamaEmbeddings(model=args.model)
-    except Exception as e:
-        print(f"Error initializing Ollama: {e}")
-        print("Make sure Ollama is running with: ollama serve")
-        return 1
+    with console.status("[cyan]Initializing Ollama...[/cyan]"):
+        try:
+            llm = OllamaLLM(model=args.llm_model)
+            embeddings = OllamaEmbeddings(model=args.embedding_model)
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            console.print("[yellow]Make sure Ollama is running:[/yellow]")
+            console.print("  ollama serve")
+            return 1
     
-    # Step 1: Chunk notes
-    print("📝 Step 1: Chunking notes...")
+    # Chunk notes
     chunker = NoteChunker(llm)
-    chunk_files = chunker.process_folder(args.input_dir, chunks_dir)
-    print(f"✓ Created {len(chunk_files)} chunks\n")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[cyan]Chunking notes..."),
+        console=console,
+    ) as progress:
+        progress.add_task("chunk", total=None)
+        chunk_files = chunker.process_folder(input_dir, chunks_dir)
     
-    # Step 2: Create embeddings and plateaus
-    print("🔗 Step 2: Creating embeddings and finding connections...")
+    console.print(f"[green]Created {len(chunk_files)} chunks[/green]")
+    
+    # Create plateaus
     embedder = ChunkEmbedder(embeddings)
-    plateau_files = embedder.process_plateaus(chunks_dir, plateaus_dir, args.threshold, llm=llm)
-    print(f"✓ Created {len(plateau_files)} plateaus\n")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[cyan]Creating plateaus..."),
+        console=console,
+    ) as progress:
+        progress.add_task("plateau", total=None)
+        plateau_files = embedder.process_plateaus(chunks_dir, plateaus_dir, threshold=args.threshold, llm=llm)
     
-    print(f"🎉 Done! Check {args.output_dir} for results")
-    print(f"   Chunks: {chunks_dir}")
-    print(f"   Plateaus: {plateaus_dir}")
+    console.print(f"[green]Created {len(plateau_files)} plateaus[/green]")
+    console.print()
+    console.print("[bold cyan]Done![/bold cyan]")
     
     return 0
 
 
 if __name__ == '__main__':
-    exit(main())
+    sys.exit(main())
