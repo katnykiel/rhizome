@@ -19,6 +19,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.pkl
 
 # Virtual environments
 .venv/
@@ -27,7 +28,6 @@ ENV/
 env/
 
 # Output directories
-output/
 chunks/
 plateaus/
 

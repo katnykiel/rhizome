@@ -22,12 +22,14 @@ pkgs.mkShell {
   ];
 
   shellHook = ''
-    export PYTHONPATH="$PWD:$PYTHONPATH"
+    # Set PYTHONPATH to the rhizome project directory (where this shell.nix is)
+    export PYTHONPATH="${toString ./.}:$PYTHONPATH"
     
     # Create alias for rhizome command
     alias rhizome='python -m rhizome.cli'
     
     echo "Rhizome development environment loaded"
     echo "Python version: $(python --version)"
+    echo "Project path: ${toString ./.}"
   '';
 }

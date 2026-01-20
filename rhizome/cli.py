@@ -100,29 +100,41 @@ def main():
             console.print("  ollama serve")
             return 1
     
-    # Chunk notes
-    chunker = NoteChunker(llm)
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[cyan]Chunking notes..."),
-        console=console,
-    ) as progress:
-        progress.add_task("chunk", total=None)
-        chunk_files = chunker.process_folder(input_dir, chunks_dir)
+    # Chunk notes (skip if chunks directory already exists with files)
+    chunk_files = []
+    if chunks_dir.exists() and list(chunks_dir.glob('*.md')):
+        chunk_files = list(chunks_dir.glob('*.md'))
+        console.print(f"[yellow]Using existing {len(chunk_files)} chunks[/yellow]")
+    else:
+        chunker = NoteChunker(llm)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]Chunking notes..."),
+            console=console,
+        ) as progress:
+            progress.add_task("chunk", total=None)
+            chunk_files = chunker.process_folder(input_dir, chunks_dir)
+        
+        console.print(f"[green]Created {len(chunk_files)} chunks[/green]")
     
-    console.print(f"[green]Created {len(chunk_files)} chunks[/green]")
+    # Create plateaus (skip if plateaus directory already exists with files)
+    plateau_files = []
+    if plateaus_dir.exists() and list(plateaus_dir.glob('*.md')):
+        plateau_files = list(plateaus_dir.glob('*.md'))
+        console.print(f"[yellow]Using existing {len(plateau_files)} plateaus[/yellow]")
+    else:
+        embedder = ChunkEmbedder(embeddings)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]Creating plateaus..."),
+            console=console,
+        ) as progress:
+            progress.add_task("plateau", total=None)
+            # Cache embeddings in the output directory
+            plateau_files = embedder.process_plateaus(chunks_dir, plateaus_dir, threshold=args.threshold, llm=llm, cache_dir=output_dir)
+        
+        console.print(f"[green]Created {len(plateau_files)} plateaus[/green]")
     
-    # Create plateaus
-    embedder = ChunkEmbedder(embeddings)
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[cyan]Creating plateaus..."),
-        console=console,
-    ) as progress:
-        progress.add_task("plateau", total=None)
-        plateau_files = embedder.process_plateaus(chunks_dir, plateaus_dir, threshold=args.threshold, llm=llm)
-    
-    console.print(f"[green]Created {len(plateau_files)} plateaus[/green]")
     console.print()
     console.print("[bold cyan]Done![/bold cyan]")
     
