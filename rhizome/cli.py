@@ -50,6 +50,12 @@ def main():
         help='Similarity threshold for creating plateaus (default: 0.65)'
     )
     parser.add_argument(
+        '--min-plateau-distance',
+        type=float,
+        default=0.3,
+        help='Minimum distance between plateau centroids for diversity (default: 0.3, range: 0.2-0.5)'
+    )
+    parser.add_argument(
         '--llm-model',
         type=str,
         default='deepseek-r1:8b',
@@ -131,7 +137,14 @@ def main():
         ) as progress:
             progress.add_task("plateau", total=None)
             # Cache embeddings in the output directory
-            plateau_files = embedder.process_plateaus(chunks_dir, plateaus_dir, threshold=args.threshold, llm=llm, cache_dir=output_dir)
+            plateau_files = embedder.process_plateaus(
+                chunks_dir, 
+                plateaus_dir, 
+                threshold=args.threshold,
+                min_plateau_distance=args.min_plateau_distance,
+                llm=llm, 
+                cache_dir=output_dir
+            )
         
         console.print(f"[green]Created {len(plateau_files)} plateaus[/green]")
     

@@ -83,41 +83,70 @@ class ChunkEmbedder:
         if cache_dir:
             self._save_cache(cache_dir / '.embeddings_cache.pkl')
     
-    def find_similar_chunks(self, threshold: float = 0.7) -> List[List[int]]:
-        """Find groups of semantically similar chunks. Chunks can belong to multiple groups.
+    def find_similar_chunks(self, threshold: float = 0.7, min_plateau_distance: float = 0.3) -> List[List[int]]:
+        """Find groups of semantically similar chunks with diversity enforcement.
         
         Creates overlapping groups where each group contains chunks that are all 
-        similar to each other (forming a clique). This allows chunks to appear in 
-        multiple plateaus if they connect different concepts.
+        similar to each other. Ensures plateaus are sufficiently different from 
+        each other by enforcing minimum centroid distance in embedding space.
+        
+        Args:
+            threshold: Similarity threshold for grouping chunks (0-1)
+            min_plateau_distance: Minimum distance between plateau centroids (0-1).
+                                 Higher = more diverse plateaus. Recommended: 0.2-0.4
+        
+        Returns:
+            List of chunk index lists, where plateaus are semantically diverse
         """
         if not self.chunk_embeddings:
             raise ValueError("No embeddings found. Call create_embeddings() first.")
         
         # Calculate similarity matrix
-        similarity_matrix = cosine_similarity(np.array(self.chunk_embeddings))
+        embeddings_array = np.array(self.chunk_embeddings)
+        similarity_matrix = cosine_similarity(embeddings_array)
         np.fill_diagonal(similarity_matrix, 0)
         
         n = len(self.chunks)
-        groups = []
+        candidate_groups = []
         
-        # For each chunk, find all chunks similar to it and create a group
+        # Generate candidate groups
         for i in range(n):
-            similar = [i]  # Start with the chunk itself
+            similar = [i]
             
-            # Find all chunks similar to chunk i
             for j in range(n):
                 if i != j and similarity_matrix[i][j] > threshold:
                     similar.append(j)
             
-            # Only create a group if there are at least 2 chunks
             if len(similar) >= 2:
-                # Sort to make groups comparable
                 similar.sort()
-                # Avoid duplicate groups
-                if similar not in groups:
-                    groups.append(similar)
+                if similar not in candidate_groups:
+                    candidate_groups.append(similar)
         
-        return groups
+        # Filter groups by centroid distance to ensure plateau diversity
+        diverse_groups = []
+        plateau_centroids = []
+        
+        for group in candidate_groups:
+            # Calculate centroid of this plateau
+            group_embeddings = embeddings_array[group]
+            centroid = np.mean(group_embeddings, axis=0)
+            
+            # Check if this plateau is sufficiently different from existing ones
+            is_diverse = True
+            for existing_centroid in plateau_centroids:
+                # Calculate cosine distance (1 - similarity)
+                distance = 1 - cosine_similarity([centroid], [existing_centroid])[0][0]
+                
+                if distance < min_plateau_distance:
+                    is_diverse = False
+                    break
+            
+            # Only add if sufficiently different from all existing plateaus
+            if is_diverse:
+                diverse_groups.append(group)
+                plateau_centroids.append(centroid)
+        
+        return diverse_groups
     
     def _extract_dates(self, chunks: List[Dict]) -> List[Tuple[Optional[datetime], Dict]]:
         """Extract dates from chunk filenames and sort chronologically."""
@@ -226,13 +255,15 @@ plateau_id: {plateau_id}
         
         return str(filepath)
     
-    def process_plateaus(self, chunks_dir: Path, output_dir: Path, threshold: float = 0.7, llm=None, cache_dir: Path = None) -> List[str]:
+    def process_plateaus(self, chunks_dir: Path, output_dir: Path, threshold: float = 0.7, 
+                        min_plateau_distance: float = 0.3, llm=None, cache_dir: Path = None) -> List[str]:
         """Complete pipeline: load chunks, create embeddings, find connections, create plateaus.
         
         Args:
             chunks_dir: Directory containing chunk files
             output_dir: Directory to save plateau files
             threshold: Similarity threshold for grouping
+            min_plateau_distance: Minimum distance between plateau centroids (0.2-0.5 recommended)
             llm: Optional LLM for generating plateau summaries
             cache_dir: Directory to store embedding cache (default: same as chunks_dir parent)
             
@@ -253,8 +284,8 @@ plateau_id: {plateau_id}
         # Create embeddings with caching
         self.create_embeddings(cache_dir=cache_dir)
         
-        # Find similar chunks
-        groups = self.find_similar_chunks(threshold)
+        # Find similar chunks with diversity enforcement
+        groups = self.find_similar_chunks(threshold, min_plateau_distance)
         
         # Create plateau files
         output_dir.mkdir(parents=True, exist_ok=True)
