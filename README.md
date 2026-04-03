@@ -36,7 +36,7 @@ Rhizome requires two Ollama models:
 2. **Pull the models**:
    ```bash
    ollama pull deepseek-r1:8b
-   ollama pull embedding-gemma
+   ollama pull embeddinggemma
    ```
 3. **Start Ollama**: `ollama serve` in a terminal
 
@@ -55,10 +55,9 @@ See [USAGE.md](USAGE.md) for detailed instructions and options.
 ## Output Structure
 
 ```
-output/
-├── chunks/          # Atomic ideas from your notes
-│   ├── chunk-1.md  # type: chunk, source: [[original-file.md]]
-│   └── chunk-2.md
-└── plateaus/        # Connected ideas across chunks
-    └── knowledge-synthesis.md  # type: plateau, synthesized content
+chunks/          # Atomic ideas from your notes
+├── chunk-1.md  # type: chunk, source: [[original-file.md]]
+└── chunk-2.md
+plateaus/        # Connected ideas across chunks
+└── knowledge-synthesis.md  # type: plateau, synthesized content
 ```
