@@ -4,25 +4,7 @@ import sys
 import argparse
 from pathlib import Path
 
-try:
-    from langchain_ollama import OllamaLLM, OllamaEmbeddings
-except ImportError:
-    print("Error: langchain-ollama not installed")
-    print("Run: pip install -U langchain-ollama")
-    sys.exit(1)
-
-try:
-    from rich.console import Console
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-except ImportError:
-    print("Error: rich not installed")
-    print("Run: pip install rich")
-    sys.exit(1)
-
-from rhizome.chunker import NoteChunker
-from rhizome.embedder import ChunkEmbedder
-
-console = Console()
+from rhizome import __version__
 
 
 def main():
@@ -30,6 +12,11 @@ def main():
     parser = argparse.ArgumentParser(
         description="Rhizome: Atomize and connect your notes",
         prog="rhizome"
+    )
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=f"rhizome-cli {__version__}"
     )
     parser.add_argument(
         '-i', '--input',
@@ -69,6 +56,27 @@ def main():
     )
     
     args = parser.parse_args()
+    
+    # Now import heavy dependencies only after parsing args (won't run for --help/--version)
+    try:
+        from langchain_ollama import OllamaLLM, OllamaEmbeddings
+    except ImportError:
+        print("Error: langchain-ollama not installed")
+        print("Run: pip install -U langchain-ollama")
+        sys.exit(1)
+
+    try:
+        from rich.console import Console
+        from rich.progress import Progress, SpinnerColumn, TextColumn
+    except ImportError:
+        print("Error: rich not installed")
+        print("Run: pip install rich")
+        sys.exit(1)
+
+    from rhizome.chunker import NoteChunker
+    from rhizome.embedder import ChunkEmbedder
+
+    console = Console()
     
     # Resolve input directory
     input_dir = args.input.resolve()

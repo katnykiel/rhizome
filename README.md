@@ -24,26 +24,33 @@ Creating a rhizomatic machine that takes a given piece of context, searches thro
 
 While this idea was something I had a few years ago, I've relied on vibe coding (specifically, Claude Sonnet 4.5 with VSCode + Copilot) to build this system. I've looked through the code enough to feel confident using this on my own device, but please check it yourself.
 
-## What it does
-
-1. **Atomizes** - Breaks markdown notes into atomic chunks (by paragraph)
-2. **Connects** - Uses embeddings to find semantically similar chunks
-3. **Synthesizes** - Creates plateau files that combine related ideas and analyze their relationships
-4. **Links** - Generates wiki-style backlinks between chunks and plateaus
-
 ## Quick Start
 
-```bash
-# Install Ollama and pull a model
-ollama pull llama3.1
-ollama serve
+### Prerequisites
 
-# Install rhizome
-source .venv/bin/activate
-rhizome your_notes_folder
+Rhizome requires two Ollama models:
+- **LLM Model** (text synthesis): `deepseek-r1:8b`
+- **Embedding Model** (similarity search): `embeddinggemma`
+
+1. **Install Ollama**: Download from [ollama.ai](https://ollama.ai)
+2. **Pull the models**:
+   ```bash
+   ollama pull deepseek-r1:8b
+   ollama pull embedding-gemma
+   ```
+3. **Start Ollama**: `ollama serve` in a terminal
+
+### Installation & Usage
+
+```bash
+# Install rhizome-cli from PyPI
+pip install rhizome-cli
+
+# Process your notes
+rhizome -i your_notes_folder
 ```
 
-See [USAGE.md](USAGE.md) for detailed instructions.
+See [USAGE.md](USAGE.md) for detailed instructions and options.
 
 ## Output Structure
 

@@ -1,41 +1,59 @@
 # Rhizome Usage Guide
 
-## Prerequisites
-
-1. **Install Ollama**: Download from [ollama.ai](https://ollama.ai)
-2. **Pull a model**: Run `ollama pull llama3.2` (or another model)
-3. **Start Ollama**: Run `ollama serve` in a terminal
-
 ## Installation
 
-The package is already installed in the virtual environment. To activate it:
+Install from PyPI:
 
 ```bash
-source .venv/bin/activate
+pip install rhizome-cli
 ```
+
+The `rhizome` command will be available in your environment.
+
+## Prerequisites
+
+Rhizome uses two distinct Ollama models:
+
+- **LLM Model** (for synthesizing and generating insights): `deepseek-r1:8b`
+- **Embedding Model** (for semantic similarity): `embeddinggemma`
+
+Setup steps:
+
+1. **Install Ollama**: Download from [ollama.ai](https://ollama.ai)
+2. **Pull both models**:
+   ```bash
+   ollama pull deepseek-r1:8b
+   ollama pull embeddinggemma
+   ```
+3. **Start Ollama**: Run `ollama serve` in a terminal (keep it running while using rhizome)
 
 ## Basic Usage
 
 Process a folder of markdown notes:
 
 ```bash
-rhizome test_notes
+rhizome -i your_notes_folder
 ```
 
 This will:
-1. Create atomic chunks from your notes in `output/chunks/`
-2. Generate embeddings for each chunk
-3. Find similar chunks and create plateau files in `output/plateaus/`
+1. Read all markdown files in the folder
+2. Break them into atomic chunks (ideas)
+3. Generate embeddings for similarity analysis
+4. Find and synthesize related chunks into "plateaus" (connected groups)
+5. Save results to `your_notes_folder/` directory (chunks and plateaus subdirectories)
 
 ## Options
 
 ```bash
-rhizome test_notes --output-dir my_output --threshold 0.6 --model llama3.2
+rhizome -i your_notes_folder -o my_output --threshold 0.6 --min-plateau-distance 0.3 --llm-model deepseek-r1:8b --embedding-model embeddinggemma
 ```
 
-- `--output-dir`: Where to save results (default: `output`)
-- `--threshold`: Similarity threshold for grouping chunks (0-1, default: 0.7)
-- `--model`: Ollama model to use (default: `llama3.2`)
+- `-i, --input`: Directory containing markdown notes (required)
+- `-o, --output`: Output directory for chunks and plateaus (default: input directory)
+- `--threshold`: Similarity threshold for creating plateaus (0-1, default: 0.65)
+- `--min-plateau-distance`: Minimum distance between plateau centroids for diversity (default: 0.3, range: 0.2-0.5)
+- `--llm-model`: LLM model to use for synthesis (default: `deepseek-r1:8b`)
+- `--embedding-model`: Embedding model for similarity (default: `embeddinggemma`)
 
 ## Understanding the Output
 
@@ -56,22 +74,16 @@ Plateau files connect related chunks:
 ---
 type: plateau
 plateau_id: 0
-related_chunks:
-  - Chunk Title 1
-  - Chunk Title 2
-source_files:
-  - file1.md
-  - file2.md
 ---
 ```
 
 ## Example Workflow
 
 1. Put your markdown notes in a folder (e.g., `notes/`)
-2. Run: `rhizome notes`
+2. Run: `rhizome -i notes`
 3. Explore the results:
-   - `output/chunks/` - Atomic ideas from your notes
-   - `output/plateaus/` - Connected ideas across notes
+   - `notes/chunks/` - Atomic ideas from your notes
+   - `notes/plateaus/` - Connected ideas across notes
 
 ## Tips
 

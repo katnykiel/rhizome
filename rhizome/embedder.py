@@ -2,6 +2,7 @@
 
 import pickle
 import re
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
@@ -40,47 +41,107 @@ class ChunkEmbedder:
         
         return self.chunks
     
-    def _load_cache(self, cache_file: Path) -> bool:
-        """Try to load embeddings from cache. Returns True if successful."""
+    def _compute_chunk_signature(self, chunk: Dict) -> str:
+        """Compute a stable signature for chunk content to detect additions/updates."""
+        content_bytes = (chunk.get('content') or '').encode('utf-8')
+        return hashlib.md5(content_bytes).hexdigest()
+
+    def _load_cache(self, cache_file: Path) -> Optional[Dict]:
+        """Load cache with embeddings and chunk metadata. Returns None if invalid."""
         try:
             with open(cache_file, 'rb') as f:
                 cached_data = pickle.load(f)
-            
-            # Validate cache: same files and content
-            cached_files = {c['file']: c['content'] for c in cached_data['chunks']}
-            current_files = {c['file']: c['content'] for c in self.chunks}
-            
-            if cached_files == current_files:
-                self.chunk_embeddings = cached_data['embeddings']
-                return True
+
+            if not isinstance(cached_data, dict):
+                return None
+
+            chunks = cached_data.get('chunks')
+            embeddings = cached_data.get('embeddings')
+            if chunks is None or embeddings is None:
+                return None
+
+            signatures = {}
+            for c, emb in zip(chunks, embeddings):
+                file_ = c.get('file')
+                if not file_ or 'content' not in c:
+                    continue
+                signatures[file_] = c.get('signature') or hashlib.md5(c['content'].encode('utf-8')).hexdigest()
+
+            return {
+                'chunks': chunks,
+                'embeddings': embeddings,
+                'signatures': signatures
+            }
         except Exception:
-            pass
-        return False
-    
+            return None
+
     def _save_cache(self, cache_file: Path):
-        """Save embeddings to cache."""
+        """Save embeddings and chunk data with signatures."""
         try:
             cache_file.parent.mkdir(parents=True, exist_ok=True)
+            serializable_chunks = []
+            for chunk in self.chunks:
+                chunk_copy = chunk.copy()
+                chunk_copy['signature'] = self._compute_chunk_signature(chunk)
+                serializable_chunks.append(chunk_copy)
+
             with open(cache_file, 'wb') as f:
                 pickle.dump({
-                    'chunks': self.chunks,
+                    'chunks': serializable_chunks,
                     'embeddings': self.chunk_embeddings
                 }, f)
         except Exception:
             pass
-    
+
     def create_embeddings(self, cache_dir: Optional[Path] = None):
-        """Create embeddings for all loaded chunks with optional caching."""
-        if cache_dir:
+        """Create or incrementally update embeddings for loaded chunks."""
+        if cache_dir is not None:
             cache_file = cache_dir / '.embeddings_cache.pkl'
-            if cache_file.exists() and self._load_cache(cache_file):
+            cached = self._load_cache(cache_file) if cache_file.exists() else None
+
+            if cached:
+                cached_signatures = cached['signatures']
+                cached_embeddings_by_file = {
+                    c['file']: emb for c, emb in zip(cached['chunks'], cached['embeddings'])
+                    if c.get('file') in cached_signatures
+                }
+
+                # Determine chunk embedding state by current signatures
+                current_signatures = {
+                    chunk['file']: self._compute_chunk_signature(chunk)
+                    for chunk in self.chunks
+                }
+
+                merged_embeddings = []
+                new_texts = []
+                new_indexes = []
+
+                for idx, chunk in enumerate(self.chunks):
+                    path = chunk['file']
+                    sig = current_signatures[path]
+                    if path in cached_signatures and cached_signatures[path] == sig:
+                        merged_embeddings.append(cached_embeddings_by_file[path])
+                    else:
+                        merged_embeddings.append(None)
+                        new_texts.append(chunk['content'])
+                        new_indexes.append(idx)
+
+                # Generate only missing or changed embeddings
+                if new_texts:
+                    new_embs = self.embeddings.embed_documents(new_texts)
+                    for idx, emb in zip(new_indexes, new_embs):
+                        merged_embeddings[idx] = emb
+
+                # If any cached chunk was removed, we keep only existing ones by current chunks order
+                self.chunk_embeddings = merged_embeddings
+                self._save_cache(cache_file)
                 return
-        
-        # Generate embeddings
+
+        # Fallback: full embedding refresh
         texts = [chunk['content'] for chunk in self.chunks]
         self.chunk_embeddings = self.embeddings.embed_documents(texts)
-        
-        if cache_dir:
+
+        if cache_dir is not None:
             self._save_cache(cache_dir / '.embeddings_cache.pkl')
     
     def find_similar_chunks(self, threshold: float = 0.7, min_plateau_distance: float = 0.3) -> List[List[int]]:
@@ -147,7 +208,134 @@ class ChunkEmbedder:
                 plateau_centroids.append(centroid)
         
         return diverse_groups
-    
+
+    def load_plateaus(self, plateaus_dir: Path) -> List[Dict]:
+        """Load existing plateau metadata and chunk associations from disk."""
+        plateaus = []
+        for plateau_file in sorted(plateaus_dir.glob('*.md')):
+            try:
+                text = plateau_file.read_text(encoding='utf-8')
+            except Exception:
+                continue
+
+            metadata = {}
+            if text.startswith('---'):
+                parts = text.split('---', 3)
+                if len(parts) >= 3:
+                    metadata = yaml.safe_load(parts[1]) or {}
+
+            related_chunks = []
+            match = re.search(r'Related chunks:\s*(.+)', text)
+            if match:
+                related_chunks = re.findall(r'\[\[([^\]]+)\]\]', match.group(1))
+
+            plateaus.append({
+                'path': plateau_file,
+                'plateau_id': metadata.get('plateau_id'),
+                'title': metadata.get('title'),
+                'chunk_files': related_chunks
+            })
+        return plateaus
+
+    def _find_similar_groups_for_indices(self, indices: List[int], threshold: float, min_plateau_distance: float) -> List[List[int]]:
+        """Find related groups among a subset of chunk indices."""
+        if not indices:
+            return []
+
+        embeddings_array = np.array([self.chunk_embeddings[i] for i in indices])
+        sim_matrix = cosine_similarity(embeddings_array)
+        np.fill_diagonal(sim_matrix, 0)
+
+        candidate_groups = []
+        for local_i, global_i in enumerate(indices):
+            group = [global_i]
+            for local_j, global_j in enumerate(indices):
+                if local_i != local_j and sim_matrix[local_i][local_j] > threshold:
+                    group.append(global_j)
+            if len(group) >= 2:
+                group.sort()
+                if group not in candidate_groups:
+                    candidate_groups.append(group)
+
+        diverse_groups = []
+        plateau_centroids = []
+
+        for group in candidate_groups:
+            group_embeddings = np.array([self.chunk_embeddings[i] for i in group])
+            centroid = np.mean(group_embeddings, axis=0)
+            is_diverse = True
+
+            for existing_centroid in plateau_centroids:
+                distance = 1 - cosine_similarity([centroid], [existing_centroid])[0][0]
+                if distance < min_plateau_distance:
+                    is_diverse = False
+                    break
+
+            if is_diverse:
+                diverse_groups.append(group)
+                plateau_centroids.append(centroid)
+
+        return diverse_groups
+
+    def update_plateaus(self, plateaus_dir: Path, threshold: float = 0.7, min_plateau_distance: float = 0.3, llm=None) -> List[str]:
+        """Incrementally update or create plateaus with newly added chunks."""
+        plateaus_dir.mkdir(parents=True, exist_ok=True)
+
+        existing_plateaus = self.load_plateaus(plateaus_dir)
+        existing_groups = []
+        existing_files = set()
+
+        # Map file stems to chunk indices
+        stem_to_index = {Path(chunk['file']).stem: i for i, chunk in enumerate(self.chunks)}
+
+        for plateau in existing_plateaus:
+            group_indices = [stem_to_index.get(stem) for stem in plateau['chunk_files'] if stem_to_index.get(stem) is not None]
+            if group_indices:
+                existing_groups.append(sorted(set(group_indices)))
+                existing_files.update(group_indices)
+
+        # Identify newly added chunks (or changed ones will be included here)
+        new_indices = [i for i in range(len(self.chunks)) if i not in existing_files]
+
+        # Connect new chunks to existing plateaus
+        for idx in new_indices:
+            best_plateau = None
+            best_similarity = threshold
+            for p_idx, group in enumerate(existing_groups):
+                sim = max(cosine_similarity([self.chunk_embeddings[idx]], [self.chunk_embeddings[j]])[0][0] for j in group)
+                if sim > best_similarity:
+                    best_similarity = sim
+                    best_plateau = p_idx
+
+            if best_plateau is not None:
+                existing_groups[best_plateau].append(idx)
+                existing_groups[best_plateau] = sorted(set(existing_groups[best_plateau]))
+
+        # New-to-new plateau grouping for any still-unassigned chunks
+        assigned = {i for group in existing_groups for i in group}
+        remaining = [i for i in new_indices if i not in assigned]
+        new_group_sets = self._find_similar_groups_for_indices(remaining, threshold, min_plateau_distance)
+
+        if new_group_sets:
+            existing_groups.extend(new_group_sets)
+
+        # Create or rewrite plateau files
+        for file in plateaus_dir.glob('*.md'):
+            try:
+                file.unlink()
+            except Exception:
+                pass
+
+        plateau_paths = []
+        existing_plateau_ids = [p.get('plateau_id', -1) for p in existing_plateaus if isinstance(p.get('plateau_id'), int)]
+        next_plateau_id = max(existing_plateau_ids, default=-1) + 1
+
+        for group in existing_groups:
+            plateau_paths.append(self.create_plateau(group, next_plateau_id, plateaus_dir, llm=llm))
+            next_plateau_id += 1
+
+        return plateau_paths
+
     def _extract_dates(self, chunks: List[Dict]) -> List[Tuple[Optional[datetime], Dict]]:
         """Extract dates from chunk filenames and sort chronologically."""
         dated = []
@@ -284,15 +472,19 @@ plateau_id: {plateau_id}
         # Create embeddings with caching
         self.create_embeddings(cache_dir=cache_dir)
         
-        # Find similar chunks with diversity enforcement
-        groups = self.find_similar_chunks(threshold, min_plateau_distance)
-        
-        # Create plateau files
+        # Create or update plateaus
         output_dir.mkdir(parents=True, exist_ok=True)
-        plateau_files = []
-        
-        for i, group in enumerate(groups):
-            plateau_file = self.create_plateau(group, i, output_dir, llm=llm)
-            plateau_files.append(plateau_file)
-        
+        existing_plateaus = list(output_dir.glob('*.md'))
+
+        if existing_plateaus:
+            plateau_files = self.update_plateaus(output_dir, threshold=threshold,
+                                                 min_plateau_distance=min_plateau_distance,
+                                                 llm=llm)
+        else:
+            groups = self.find_similar_chunks(threshold, min_plateau_distance)
+            plateau_files = []
+            for i, group in enumerate(groups):
+                plateau_file = self.create_plateau(group, i, output_dir, llm=llm)
+                plateau_files.append(plateau_file)
+
         return plateau_files

@@ -7,5 +7,5 @@ from rhizome.cli import main
 if __name__ == "__main__":
     # Test the CLI with test_notes
     import sys
-    sys.argv = ["rhizome", "-i", "test_notes"]
+    sys.argv = ["rhizome", "-i", "test_notes", "--threshold", "0.4"]
     exit(main())
